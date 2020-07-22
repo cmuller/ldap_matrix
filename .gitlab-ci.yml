@@ -1,0 +1,86 @@
+stages:
+  - legal
+  - quality
+  - build
+  - check
+  - deploy
+
+# stage: legal
+include:
+  - project: 'tools/gitlab_ci_templates'
+    file: '/legal/copyright.yml'
+    allow_failure: true
+
+pyflakes:
+  stage: quality
+  tags:
+    - bash
+  image: library/alpine:3.11
+  script:
+    - apk add --no-cache py3-pip
+    - pip3 install pyflakes
+    - pyflakes spec2policy.py
+  allow_failure: true
+
+cache:
+  key: build-cache
+  paths:
+  - published/
+  policy: pull-push
+
+build-policy:
+  stage: build
+  tags:
+    - tools
+  image: library/python:3.7-alpine3.11
+  artifacts:
+    when: on_success
+    paths:
+      - policy.json
+  script:
+    - apk add --no-cache coreutils
+    - cat "$CFG" | wc -c
+    - cat "$CFG" | base64 -di > $HOME/.ldapsync.cfg
+    - pip3 install --user pipenv
+    - export PATH=$HOME/.local/bin:$PATH
+    - pipenv sync
+    - pipenv install --system --deploy
+    - pipenv run python3 ./spec2policy.py matrix.yml policy.json
+
+check-differences:
+  stage: check
+  when: on_success
+  tags:
+    - tools
+  image: library/python:3.7-alpine3.11
+  script:
+    - apk add --no-cache colordiff
+    - if [ -f published/policy.json ]; then ls -ls published/policy.json ; fi
+    - ls -ls policy.json
+    - if diff published/policy.json policy.json > /dev/null ; then echo "no differences" ; PUSH=0 ; else echo "policy.json to be pushed" ; PUSH=1 ; fi
+    - if [ "$PUSH" = "0" ]; then echo "Aborting pipeline..." ; exit 1 ; fi
+    - echo "======== Changes ========"
+    - colordiff --context=10 published/policy.json policy.json || true
+    - echo "========================="
+
+push-policy:
+  stage: deploy
+  when: on_success
+  environment:
+    name: matrix
+    url: https://matrix.domain.com
+  tags:
+    - tools
+  image: library/python:3.7-alpine3.11
+  script:
+    - apk add --no-cache curl
+    - >
+        curl --insecure -XPUT
+        --data "@$(pwd)/policy.json"
+        -H "Authorization: Bearer $BEARER"
+        https://matrix.domain.com/_matrix/corporal/policy
+    - mkdir -p published/
+    - cp policy.json published/
+  only:
+    refs:
+      - master
