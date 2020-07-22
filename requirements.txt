@@ -1,0 +1,4 @@
+requests
+requests-toolbelt
+ldap3
+pyyaml
