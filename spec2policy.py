@@ -146,6 +146,8 @@ def ldap_group_members(ldapgroup):
     if len(ldap_conn.entries) < 1:
         return False
     members = ldap_conn.entries[0].memberUid.value
+    if not isinstance(members, list):
+        members = [ members ]
     return members
 
 def policy_update_schema(version):
