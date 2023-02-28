@@ -238,6 +238,8 @@ print('Computing LDAP groups...', end='')
 LDAPGROUPS = RESTRICTEDGROUPS
 for g in [ s['ldapgroups'] for s in spec if 'ldapgroups' in s ]:
     LDAPGROUPS += g
+for g in [ s['ldapgroups-forbidroomcreation'] for s in spec if 'ldapgroups-forbidroomcreation' in s ]:
+    LDAPGROUPS += g
 LDAPGROUPS = sorted(set(LDAPGROUPS))
 print('Done.')
 print('')
