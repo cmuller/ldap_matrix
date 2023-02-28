@@ -159,6 +159,10 @@ def policy_update_flags(change_name = True, change_avatar = True, forbid_create_
     flags_data['flags']['allowCustomUserDisplayNames'] = change_name
     flags_data['flags']['allowCustomUserAvatars'] = change_avatar
     flags_data['flags']['forbidRoomCreation'] = forbid_create_room
+    flags_data['flags']['allowCustomPassthroughUserPasswords'] = False
+    flags_data['flags']['forbidEncryptedRoomCreation'] = False
+    flags_data['flags']['forbidUnencryptedRoomCreation'] = False
+
     POLICY.update(flags_data)
 
 def policy_update_groups(list_of_groups):
