@@ -32,8 +32,8 @@ Generates a Matrix Corporal JSON policy file with data coming from:
 ~~~
 - matrixgroup: +group1:domain.com
   rooms:
-    - room1
-    - room2
+    - room1 or space1
+    - room2 or space2
   ldapgroups:
     - ldapgroup1
     - ldapgroup2
@@ -48,17 +48,26 @@ Generates a Matrix Corporal JSON policy file with data coming from:
       users:
         - supplementaryuser1
         - supplementaryuser3
+  ldapgroups-forbidroomcreation:
+        - ldapgroup1
+  ldapusers-fordbidroomcreation:
+        - user1
+
 ~~~
 
 * a list of *matrixgroup* can be specified, each in its own section
-* for each matrix group, either a list of individual members is specified (*ldapusers*)
-* or a list of members belonging to LDAP groups is specified (*ldapgroups*)
-* or both
-* also a *restricted* section can add rooms for which those specified members above do not have access. For each of these restricted rooms, there is a specific room-only member list, i.e., for each room a *users* or a *groups* list or both.
+* for each matrix group, either a list of individual members and a list of LDAP groups can be specified (*ldapusers*)
+* all these users in that *matrixgroup are enrolled to the set of rooms or spaces in that matrixgroup. 
+* In the template above there is no equivalent to +group1:domain.com, since now matrix handles spaces and rooms the same way
+* 
+* in the *restricted* section you can set for each room a seperate specific list of users or ldapgroups that have access to that room.
+ It doesn't matter, if that room belongs to another space or not.
+
+For the members of *ldapgroups-forbidroomcreation* and *ldapgroups-forbidroomcreation* a userwise flag is created in the policy that forbids the room-creation for those users.
 
 ## Caveats
 
-* neither matrix groups (aka communities) nor rooms are *created* by this script: they need to be create beforehand and corporal enabled on your Matrix server
-* also rooms have to be inserted in their relevant Matrix group beforehand
+* neither spaces nor rooms are *created* by this script: they need to be create beforehand by an adminaccount and corporal enabled on your Matrix server
+* also rooms have to be inserted in their relevant spaces beforehand
 * this script is generating a corporal `policy.json` file that you can either *push* or place in a policy provider (see https://github.com/devture/matrix-corporal/blob/master/docs/policy-providers.md for more details).
 
