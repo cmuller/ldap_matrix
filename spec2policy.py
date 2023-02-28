@@ -286,6 +286,8 @@ for user in USERS:
     USER_DATA[user] = {}
     USER_DATA[user]['matrix-groups'] = []
     USER_DATA[user]['matrix-rooms'] = []
+    flag[user] ={}
+    flag[user]['forbidroomcreation'] = {}
 for i in spec:
     # get all data fields of a given matrixgroup
     matrixgroup = i.get('matrixgroup')
@@ -318,7 +320,14 @@ for i in spec:
             id = matrix_room_id(ROOMS,room.get('room'))
             if id is not None and id not in USER_DATA[user]['matrix-rooms']:
                 USER_DATA[user]['matrix-rooms'].append(id)
-
+   ##read users that have the flag 'forbidroomcreation'
+    forbidroomcreationgroups = i.get('ldapgroups-forbidroomcreation', [])
+    forbidroomcreationusers = i.get('ldapusers-forbidroomcreation', [])
+    print(f'forbidroomcreation {forbidroomcreationgroups}')
+    for group in forbidroomcreationgroups:
+       forbidroomcreationusers += USERSINGROUP[group]
+    for user in forbidroomcreationusers:
+        flag[user]['forbidroomcreation'] = 'true'
 ## For each user, add its policy section
 list = []
 for user in USERS:
@@ -327,8 +336,10 @@ for user in USERS:
     user_data['active'] = True
     user_data['authCredential'] = "http://matrix-ma1sd:8090/_matrix-internal/identity/v1/check_credentials"
     user_data['authType'] = "rest"
-    user_data['joinedCommunityIds'] = USER_DATA[user]['matrix-groups']
+  #  user_data['joinedCommunityIds'] = USER_DATA[user]['matrix-groups'] #not working anymore due to spaces
     user_data['joinedRoomIds'] = USER_DATA[user]['matrix-rooms']
+    if flag[user]['forbidroomcreation'] == 'true':
+      user_data['forbidroomcreation'] = 'true'
     list.append(user_data)
 policy_update_users(list)
 
