@@ -24,6 +24,8 @@ import argparse
 import configparser
 import requests
 import yaml
+import hmac
+import hashlib
 from ldap3 import Server, Connection, ALL
 import json
 
@@ -43,9 +45,11 @@ policyfile = args.policyfile
 IGNORED_ROOMS = [ 'testchannel' ]
 
 ## Matrix URL API constants
-DOMAIN = 'domain.com'
-MATRIX = 'https://matrix.' + DOMAIN + '/_matrix/client/r0'
-ADMIN = 'https://matrix.' + DOMAIN + '/_synapse/admin/v1'
+#ideally the policy is created on the matrixserver directly, so no security issue with shared-secret
+DOMAIN = 'matrix.domain.com'
+DOMAINURL = 'http://'+ DOMAIN
+MATRIX = 'http://' + DOMAIN + ':8008/_matrix/client/r0'
+ADMIN = 'http://' + DOMAIN + ':8008/_synapse/admin/v1'
 
 ## LDAP server constants
 LDAP_SERVER_IP = "10.10.10.10"
@@ -58,12 +62,42 @@ config = configparser.ConfigParser()
 config.read(user_config)
 MATRIX_ADMIN_ACCOUNT = config['matrix']['AdminUser']
 MATRIX_ADMIN_PASSWORD = config['matrix']['AdminPassword']
-TOKEN = config['matrix']['AdminToken']
-AUTH = {'Authorization': 'Bearer ' + TOKEN}
+#shared secret used instead of password, maybe automatic room creation will be possible
+MATRIX_SHARED_SECRET = config['matrix']['SharedSecret']
+
 LDAP_BIND_ACCOUNT = config['ldap']['BindAccount']
 LDAP_BIND_PASSWORD = config['ldap']['BindPassword']
 
 # functions
+
+#this function was created by devture.sharedsecretauth
+def obtain_access_token(full_user_id, homeserver_api_url, shared_secret):
+    login_api_url = homeserver_api_url + ':8008/_matrix/client/r0/login'
+    token = hmac.new(shared_secret.encode('utf-8'), full_user_id.encode('utf-8'), hashlib.sha512).hexdigest()
+    payload = {
+        'type': 'com.devture.shared_secret_auth',
+        'identifier': {
+          'type': 'm.id.user',
+          'user': full_user_id,
+        },
+        'token': token,
+    }
+      #code for password login instead of shared secret
+    # If `m_login_password_support_enabled`, you can use `m.login.password`.
+    # The token goes into the `password` field for this login type, not the `token` field.
+    #
+    # payload = {
+    #     'type': 'm.login.password',
+    #     'identifier': {
+    #       'type': 'm.id.user',
+    #       'user': full_user_id,
+    #     },
+    #     'password': token,
+    # }
+    response = requests.post(login_api_url, data=json.dumps(payload))
+    return {'Authorization': 'Bearer ' + response.json()['access_token']}
+
+
 
 def spec_load_yaml(yamlfile):
     with open(yamlfile, 'r') as f:
@@ -173,6 +207,8 @@ def policy_update_users(list_of_users):
 # main
 
 ## initial policy
+AUTH = obtain_access_token(MATRIX_ADMIN_ACCOUNT, DOMAINURL, MATRIX_SHARED_SECRET)
+
 POLICY = {}
 
 ## check admin user
