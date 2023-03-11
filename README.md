@@ -30,6 +30,17 @@ Generates a Matrix Corporal JSON policy file with data coming from:
 ## Input specification format
 
 ~~~
+---
+#here set flags for users based on LDAP Group memberships:
+ldapgroups-forbidroomcreation:
+   - ldapgroup1
+   - ldapgroup2
+ldapgroups-forbidencryptedroomcreation:
+   -ldapgroup1
+ldapgroups-forbidunencryptedroomcreation:
+   - ldapgroup2
+---
+
 - matrixgroup: +group1:domain.com
   rooms:
     - room1 or space1
@@ -48,10 +59,6 @@ Generates a Matrix Corporal JSON policy file with data coming from:
       users:
         - supplementaryuser1
         - supplementaryuser3
-  ldapgroups-forbidroomcreation:
-        - ldapgroup1
-  ldapusers-fordbidroomcreation:
-        - user1
 
 ~~~
 
@@ -63,7 +70,7 @@ Generates a Matrix Corporal JSON policy file with data coming from:
 * in the *restricted* section you can set for each room a seperate specific list of users or ldapgroups that have access to that room.
  It doesn't matter, if that room belongs to another space or not.
 
-For the members of *ldapgroups-forbidroomcreation* and *ldapgroups-forbidroomcreation* a userwise flag is created in the policy that forbids the room-creation for those users.
+For the members of *ldapgroups-forbidroomcreation* and *ldapgroups-forbidroomcreation* a flag is created in the policy that forbids the room-creation for those users.
 
 ## Caveats
 
