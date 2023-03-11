@@ -98,11 +98,18 @@ def obtain_access_token(full_user_id, homeserver_api_url, shared_secret):
     return {'Authorization': 'Bearer ' + response.json()['access_token']}
 
 
+AUTH = obtain_access_token(MATRIX_ADMIN_ACCOUNT, DOMAINURL, MATRIX_SHARED_SECRET)
+
+def spec_load_yaml_flags(yamlfile):
+    with open(yamlfile, 'r') as f:
+        spec = list(yaml.load_all(f, Loader=yaml.FullLoader))
+    return spec[0]
+
 
 def spec_load_yaml(yamlfile):
     with open(yamlfile, 'r') as f:
         spec = yaml.load(f, Loader=yaml.FullLoader)
-    return spec
+    return spec[1]
 
 def spec_groups(spec):
     return [ i.get('matrixgroup', []) for i in spec ]
@@ -186,13 +193,16 @@ def ldap_group_members(ldapgroup):
 
 def policy_update_schema(version):
     POLICY.update( { "schemaVersion": version } )
-
-def policy_update_flags(change_name = True, change_avatar = True, forbid_create_room = False):
+#define global flag settings
+def policy_update_flags():
     flags_data = {}
     flags_data['flags'] = {}
-    flags_data['flags']['allowCustomUserDisplayNames'] = change_name
-    flags_data['flags']['allowCustomUserAvatars'] = change_avatar
-    flags_data['flags']['forbidRoomCreation'] = forbid_create_room
+    flags_data['flags']['allowCustomUserDisplayNames'] = False
+    flags_data['flags']['allowCustomUserAvatars'] = False
+    flags_data['flags']['forbidRoomCreation'] = False
+    flags_data['flags']['allowCustomPassthroughUserPasswords'] = False
+    flags_data['flags']['forbidEncryptedRoomCreation'] = False
+    flags_data['flags']['forbidUnencryptedRoomCreation'] = False
     POLICY.update(flags_data)
 
 def policy_update_groups(list_of_groups):
@@ -218,6 +228,7 @@ matrix_whoami()
 ## parse YAML spec file
 print ('Loading YAML specifications...', end='')
 spec = spec_load_yaml(yamlfile)
+spec_flags = spec_load_yaml_flags(yamlfile)
 print('Done.')
 print('')
 GROUPS = spec_groups(spec)
@@ -269,6 +280,12 @@ RESTRICTEDGROUPS = sorted(set(RESTRICTEDGROUPS))
 print('Computing LDAP groups...', end='')
 LDAPGROUPS = RESTRICTEDGROUPS
 for g in [ s['ldapgroups'] for s in spec if 'ldapgroups' in s ]:
+    LDAPGROUPS += g
+for g in [spec_flags.get('ldapgroups-forbidroomcreation',[])]:
+    LDAPGROUPS += g
+for g in [spec_flags.get('ldapgroups-forbidencryptedroomcreation',[])]:
+    LDAPGROUPS += g
+for g in [spec_flags.get('ldapgroups-forbidunencryptedroomcreation',[])]:
     LDAPGROUPS += g
 LDAPGROUPS = sorted(set(LDAPGROUPS))
 print('Done.')
@@ -355,6 +372,27 @@ for i in spec:
             if id is not None and id not in USER_DATA[user]['matrix-rooms']:
                 USER_DATA[user]['matrix-rooms'].append(id)
 
+##set the user flags for each user
+forbidroomcreationusers=[]
+forbidencryptedroomcreationusers=[]
+forbidunencryptedroomcreationusers=[]
+
+for group in spec_flags.get('ldapgroups-forbidroomcreation',[]):
+    forbidroomcreationusers += USERSINGROUP[group]
+for user in forbidroomcreationusers:
+    flag[user]['forbidroomcreation'] = True
+for group in spec_flags.get('ldapgroups-forbidencryptedroomcreation',[]):
+    forbidencryptedroomcreationusers += USERSINGROUP[group]
+for user in forbidencryptedroomcreationusers:
+    flag[user]['forbidencryptedroomcreation'] = True
+for group in spec_flags.get('ldapgroups-forbidunencryptedroomcreation',[]):
+    forbidunencryptedroomcreationusers += USERSINGROUP[group]
+for user in forbidunencryptedroomcreationusers:
+    flag[user]['forbidunencryptedroomcreation'] = True
+                
+                
+                
+                
 ## For each user, add its policy section
 list = []
 for user in USERS:
@@ -365,6 +403,10 @@ for user in USERS:
     user_data['authType'] = "rest"
     user_data['joinedCommunityIds'] = USER_DATA[user]['matrix-groups']
     user_data['joinedRoomIds'] = USER_DATA[user]['matrix-rooms']
+    user_data['forbidRoomCreation'] = flag[user]['forbidroomcreation']
+    user_data['forbidUnencryptedRoomCreation'] = flag[user]['forbidunencryptedroomcreation']
+    user_data['forbidEncryptedRoomCreation'] = flag[user]['forbidencryptedroomcreation']
+    
     list.append(user_data)
 policy_update_users(list)
 
