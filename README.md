@@ -36,7 +36,7 @@ ldapgroups-forbidroomcreation:
    - ldapgroup1
    - ldapgroup2
 ldapgroups-forbidencryptedroomcreation:
-   -ldapgroup1
+   - ldapgroup1
 ldapgroups-forbidunencryptedroomcreation:
    - ldapgroup2
 ---
