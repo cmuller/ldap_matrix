@@ -66,6 +66,7 @@ All the rooms and spaces are created as private rooms by default. This can be ad
 ## Caveats
 
 * There is no room deletion implemented. To delete rooms, use the synapse admin gui, for instance.
+* A Matrix Administrator Account has to be enrolled in all of the room. This is necessary for the conciliation of matrix-corporal to work.
 
 ## Future ideas:
 * implement hooks
