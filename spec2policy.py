@@ -42,7 +42,7 @@ policyfile = args.policyfile
 # constants
 
 ## rooms that will not be controlled
-IGNORED_ROOMS = [ 'testchannel' ]
+#IGNORED_ROOMS = [ 'testchannel' ]
 
 ## Matrix URL API constants
 #ideally the policy is created on the matrixserver directly, so no security issue with shared-secret
@@ -62,7 +62,7 @@ config = configparser.ConfigParser()
 config.read(user_config)
 MATRIX_ADMIN_ACCOUNT = config['matrix']['AdminUser']
 MATRIX_ADMIN_PASSWORD = config['matrix']['AdminPassword']
-#shared secret used instead of password, maybe automatic room creation will be possible
+#shared secret used instead of password
 MATRIX_SHARED_SECRET = config['matrix']['SharedSecret']
 
 LDAP_BIND_ACCOUNT = config['ldap']['BindAccount']
@@ -98,7 +98,69 @@ def obtain_access_token(full_user_id, homeserver_api_url, shared_secret):
     return {'Authorization': 'Bearer ' + response.json()['access_token']}
 
 
-AUTH = obtain_access_token(MATRIX_ADMIN_ACCOUNT, DOMAINURL, MATRIX_SHARED_SECRET)
+def create_space(roomname, AUTH):
+       #AUTH=obtain_access_token('@'+ roomcreator +':'+ DOMAIN, DOMAINURL, MATRIX_SHARED_SECRET)
+       url=DOMAINURL+':8008/_matrix/client/r0/createRoom'
+       payload = {
+              'room_alias_name': roomname,
+              'creation_content': {
+                  'type': 'm.space',
+                  },
+              'name': roomname,
+              'preset':'private_chat',
+       }
+       response=requests.post(url, data=json.dumps(payload), headers=AUTH)
+       if str(response) == '<Response [200]>':
+           print("Space:"+ roomname +"has been successfully created")
+       return None
+
+def create_room(roomname, AUTH):
+       #AUTH=obtain_access_token('@'+ roomcreator +':'+ DOMAIN, DOMAINURL, MATRIX_SHARED_SECRET)
+       url=DOMAINURL+':8008/_matrix/client/r0/createRoom'
+       payload = {
+                  'room_alias_name': roomname,
+                  'name': roomname,
+                  'preset':'private_chat',
+       }
+       #print(payload)
+       response=requests.post(url, data=json.dumps(payload), headers=AUTH)
+       if str(response) == '<Response [200]>':
+           print("Room"+ roomname +"has been successfully created")
+       return None
+
+def move_room(roomname, parentroom, roommap,AUTH):
+      # method=PUT uri="/_matrix/client/r0/rooms/!UjQqBRgxQUFzvwbjsf:matrix.wgs-albstadt.de/state/m.space.child/!QQMfqytsqBvNzexoUW:matrix.wgs-albstadt.de"
+
+     # url=DOMAINURL+':8008/_matrix/client/r0/rooms/'+ o /
+     # payload={ 
+       print(" ")
+       id_roomname= id_room(roomname,roommap)
+       id_parentroom = id_room(parentroom,roommap)
+      # print(id_parentroom)
+      # print(id_roomname)
+       url=DOMAINURL+':8008/_matrix/client/r0/rooms/'+ id_parentroom + '/state/m.space.child/'+ id_roomname
+       payload={
+                  'via': [DOMAIN],
+              }
+       #print(list(roommap))
+       #list(roommap).index({'name': roomname})     
+
+
+
+
+       #print(json.dumps(payload))
+       response=requests.put(url,data=json.dumps(payload), headers=AUTH)
+       return None
+
+
+def id_room(roomname,roommap):
+    return [room for room in roommap if room['name']== roomname][0]['id']
+
+
+def spec_load_yaml(yamlfile):
+    with open(yamlfile, 'r') as f:
+        spec = list(yaml.load_all(f, Loader=yaml.FullLoader))
+    return spec[1]
 
 def spec_load_yaml_flags(yamlfile):
     with open(yamlfile, 'r') as f:
@@ -106,16 +168,11 @@ def spec_load_yaml_flags(yamlfile):
     return spec[0]
 
 
-def spec_load_yaml(yamlfile):
-    with open(yamlfile, 'r') as f:
-        spec = yaml.load(f, Loader=yaml.FullLoader)
-    return spec[1]
-
-def spec_groups(spec):
-    return [ i.get('matrixgroup', []) for i in spec ]
+def spec_rooms(spec):
+    return [ i.get('room', i.get('space',[])) for i in spec ]
 
 def matrix_whoami():
-    response = requests.get(MATRIX + '/account/whoami', headers=AUTH)
+    response = requests.get(MATRIX + '/account/whoami', headers=ADMINAUTH)
     print(response.json()['user_id'])
 
 def matrix_compute_rooms_map():
@@ -205,8 +262,6 @@ def policy_update_flags():
     flags_data['flags']['forbidUnencryptedRoomCreation'] = False
     POLICY.update(flags_data)
 
-def policy_update_groups(list_of_groups):
-    POLICY.update( { "managedCommunityIds": list_of_groups } )
 
 def policy_update_rooms(list_of_rooms):
     POLICY.update( { "managedRoomIds": list_of_rooms } )
@@ -217,9 +272,9 @@ def policy_update_users(list_of_users):
 # main
 
 ## initial policy
-AUTH = obtain_access_token(MATRIX_ADMIN_ACCOUNT, DOMAINURL, MATRIX_SHARED_SECRET)
-
 POLICY = {}
+
+ADMINAUTH = obtain_access_token(MATRIX_ADMIN_ACCOUNT, DOMAINURL, MATRIX_SHARED_SECRET)
 
 ## check admin user
 print ('Checking Matrix user...', end='')
@@ -231,11 +286,7 @@ spec = spec_load_yaml(yamlfile)
 spec_flags = spec_load_yaml_flags(yamlfile)
 print('Done.')
 print('')
-GROUPS = spec_groups(spec)
-
-print("=== Will generate policy for the following Matrix groups: ===")
-print(GROUPS)
-print('')
+spec_rooms = spec_rooms(spec)
 
 ## add schemaVersion
 policy_update_schema(1)
@@ -246,41 +297,58 @@ policy_update_flags()
 ## add managedCommunityIds
 policy_update_groups(GROUPS)
 
-## GET the list of all rooms with a name
+## GET the list of all existing rooms in matrix with a name
 print('Computing rooms map...', end='')
-rooms = matrix_compute_rooms_map()
-
+existingrooms = matrix_compute_rooms_map()
+#print(existingrooms)
 ## filter the ones that are not under control of corporal
-ROOMS = [ r for r in rooms if matrix_room_name(r) not in IGNORED_ROOMS ]
-print(str(len(ROOMS)) + " rooms found that are controlled.")
-print('')
-print("=== Will generate policy for the following Matrix rooms: ===")
-names = list(map(lambda room:matrix_room_name(room), ROOMS))
-print(', '.join(names))
-print('')
+## filter the ones that are listed in yaml but not in matrix
+    # compute rooms, a list of dicts of the form { 'name':"...", 'id':"..." }
+
+ROOMStobecreated = [ r for r in spec_rooms if r not in [i.get('name') for i in existingrooms] ]
+print(' ')
+
+print(str(len(ROOMStobecreated)) + " rooms found in yaml that do not exist in Matrix yet.")
+
+if len(ROOMStobecreated) > 0:
+   print("=== Going to create the following rooms:"+ str(ROOMStobecreated))
+   print('')
+
+   for i in spec:
+        if i.get('space',[]) in [r for r in ROOMStobecreated]:
+           create_space(i.get('space',[]), ADMINAUTH)
+        if i.get('room',[]) in [r for r in ROOMStobecreated]:
+           create_room(i.get('room',[]),ADMINAUTH)
+    #theoretically the code could be easily changed in a way that the rooms could be directly created by a designated person that becomes then roomadmin of the room,
+    #however, matrix-corporal relies on the fact that a single admin accoount is enrolled in all the managed rooms    
+
+   print('Recomputing rooms map...', end='')
+   existingrooms = matrix_compute_rooms_map()
+  # print(existingrooms)
+
+   print('===Move Rooms to their parent room/space...', end='')
+   print(' ')
+   for i in spec:
+       if i.get('room',[]) in [r for r in ROOMStobecreated]:
+           if i.get('childof',None) is not None:
+              move_room(i.get('room',[]),i.get('childof',[]),existingrooms,ADMINAUTH)
+
+
+
 
 ## add managedRoomIds
-ROOMS_IDS = [ matrix_room_id(r) for r in ROOMS ]
+ROOMS=[r for r in  existingrooms if r.get('name') in spec_rooms]
+print(spec_rooms)
+ROOMS_IDS = [ matrix_room_id(rs) for rs in ROOMS ]
 policy_update_rooms(ROOMS_IDS)
 
-## compute RESTRICTED room list from spec for all matrixgroups
-## (i.e., rooms from each matrixgroup for which not all matrixgroup members have access)
-RESTRICTED = []
-for r in [ s['restricted'] for s in spec if 'restricted' in s ]:
-    RESTRICTED += r
-RESTRICTEDUSERS = []
-RESTRICTEDGROUPS = []
-for room in RESTRICTED:
-    RESTRICTEDUSERS += room.get('users', [])
-    RESTRICTEDGROUPS += room.get('groups', [])
-RESTRICTEDUSERS = sorted(set(RESTRICTEDUSERS))
-RESTRICTEDGROUPS = sorted(set(RESTRICTEDGROUPS))
 
-## compute total LDAPGROUPS list from spec (starting with the restricted ones)
+
+### compute total LDAPGROUPS list from spec (starting with the restricted ones)
 print('Computing LDAP groups...', end='')
-LDAPGROUPS = RESTRICTEDGROUPS
-for g in [ s['ldapgroups'] for s in spec if 'ldapgroups' in s ]:
-    LDAPGROUPS += g
+LDAPGROUPS=[]
+for i in spec:
+    LDAPGROUPS += i.get('ldapgroups',[])
 for g in [spec_flags.get('ldapgroups-forbidroomcreation',[])]:
     LDAPGROUPS += g
 for g in [spec_flags.get('ldapgroups-forbidencryptedroomcreation',[])]:
@@ -290,21 +358,22 @@ for g in [spec_flags.get('ldapgroups-forbidunencryptedroomcreation',[])]:
 LDAPGROUPS = sorted(set(LDAPGROUPS))
 print('Done.')
 print('')
-print("=== LDAP groups that are specified in the rooms ===")
+print("=== LDAP groups that are specified in any rooms or spaces ===")
 print(LDAPGROUPS)
 print('')
 
-## compute total LDAPUSERS list from spec (starting with the restricted ones)
+## compute total LDAPUSERS list from spec 
 print('Computing LDAP users...', end='')
-LDAPUSERS = RESTRICTEDUSERS
+LDAPUSERS = []
 for u in [ s['ldapusers'] for s in spec if 'ldapusers' in s ]:
-    LDAPUSERS += u
+   LDAPUSERS += u
 LDAPUSERS = sorted(set(LDAPUSERS))
 print('Done.')
 print('')
 print("=== LDAP users that are specified in the rooms ===")
-print(LDAPUSERS)
+#print(LDAPUSERS)
 print('')
+
 
 ## init LDAP connection
 print ('Connecting to LDAP server...', end='')
@@ -314,8 +383,9 @@ print('Done.')
 ## compute users of LDAP: list all users
 print ('Computing users list...', end='')
 active_users = ldap_get_usernames(LDAP_USER_QUERY)
+#inactive_users= ldap_get_usernames('(&(objectclass=inetorgperson)(|(|(logindisabled=true)(ou=Rossental))(initials=noLehrer)))')
 print(str(len(active_users)) + " users found.")
-
+#print(active_users) 
 ## then for each LDAP group mentioned in the spec, compute LDAP users that are in required group
 print ('Computing LDAP group users for each group...')
 USERSINGROUP = {}
@@ -330,49 +400,60 @@ for group in LDAPGROUPS:
 USERS += LDAPUSERS
 USERS = sorted(set(USERS))
 print('')
-print(f'=== Will generate policy for {len(USERS)} Matrix users ===')
+#print(f'=== Will generate policy for {len(USERS)} Matrix users ===')
 print("")
 
 ## compute all rooms IDs for each USERS and store it in USER_DATA: dict { <user> : dict {<groups>:[] <rooms>:[]} }
 USER_DATA = {}
 for user in USERS:
     USER_DATA[user] = {}
-    USER_DATA[user]['matrix-groups'] = []
+   # USER_DATA[user]['matrix-groups'] = []
     USER_DATA[user]['matrix-rooms'] = []
+    USER_DATA[user]['displayName'] = {}
+    USER_DATA[user]['forbidroomcreation'] = False
+    USER_DATA[user]['forbidencryptedroomcreation'] = False
+    USER_DATA[user]['forbidunencryptedroomcreation'] = False
+
 for i in spec:
-    # get all data fields of a given matrixgroup
-    matrixgroup = i.get('matrixgroup')
-    matrixrooms = i.get('rooms', [])
-    ldapusers = i.get('ldapusers', [])
-    ldapgroups = i.get('ldapgroups', [])
-    restrictedrooms = i.get('restricted', [])
-    print(f'Matrix group {matrixgroup} includes rooms {matrixrooms}, LDAP groups {ldapgroups}...')
+  #  # get all data fields of a given matrixgroup
+ #   matrixgroup = i.get('matrixgroup')
+     ROOM = i.get('room', i.get('space',[]))
+     ldapusers = i.get('ldapusers', [])
+     ldapgroups = i.get('ldapgroups', [])
+   # restrictedrooms = i.get('restricted', [])
+     print(f'Room {ROOM} includes LDAP groups {ldapgroups}...')
     # compute a global user list of all the groups
-    for group in ldapgroups:
-        ldapusers += USERSINGROUP[group]
+     for group in ldapgroups:
+       ldapusers += USERSINGROUP[group]
     # for each user: add group+rooms membership to its data
-    for user in ldapusers:
-        if matrixgroup not in USER_DATA[user]['matrix-groups']:
-            USER_DATA[user]['matrix-groups'].append(matrixgroup)
-        rooms_names = list(map(lambda name:matrix_room_id(ROOMS,name), matrixrooms))
-        USER_DATA[user]['matrix-rooms'] += [ i for i in rooms_names if i is not None ]
-    # for each restricted room, for each of its user, add group+rooms membership
-    for room in restrictedrooms:
-        print(f'Restricted room: {room}...')
-        restrictedusers = room.get('users', [])
-        for restrictedgroup in room.get('groups', []):
-            #print(f' + adding restricted users from {restrictedgroup}: ', end='')
-            #print(USERSINGROUP[restrictedgroup])
-            restrictedusers += USERSINGROUP[restrictedgroup]
-        for user in restrictedusers:
-            #print(f' + adding additional restricted users {user}:')
-            if matrixgroup not in USER_DATA[user]['matrix-groups']:
-                USER_DATA[user]['matrix-groups'].append(matrixgroup)
-            id = matrix_room_id(ROOMS,room.get('room'))
-            if id is not None and id not in USER_DATA[user]['matrix-rooms']:
+     for user in ldapusers:
+           # if matrixgroup not in USER_DATA[user]['matrix-groups']:
+           #     USER_DATA[user]['matrix-groups'].append(matrixgroup)
+          id = matrix_room_id(existingrooms, ROOM)
+          if id is not None and id not in USER_DATA[user]['matrix-rooms']:
                 USER_DATA[user]['matrix-rooms'].append(id)
 
-##set the user flags for each user
+
+#old restricted group code
+   #     if matrixgroup not in USER_DATA[user]['matrix-groups']:
+    #        USER_DATA[user]['matrix-groups'].append(matrixgroup)
+     #   rooms_names = list(map(lambda name:matrix_room_id(ROOMS,name), matrixrooms))
+      #  USER_DATA[user]['matrix-rooms'] += [ i for i in rooms_names if i is not None ]
+    # for each restricted room, for each of its user, add group+rooms membership
+  #  for room in restrictedrooms:
+   #     print(f'Restricted room: {room}...')
+    #    restrictedusers = room.get('users', [])
+     #   for restrictedgroup in room.get('groups', []):
+        #    restrictedusers += USERSINGROUP[restrictedgroup]
+       # for user in restrictedusers:
+            #print(f' + adding additional restricted users {user}:')
+           # if matrixgroup not in USER_DATA[user]['matrix-groups']:
+           #     USER_DATA[user]['matrix-groups'].append(matrixgroup)
+           # id = matrix_room_id(ROOMS,room.get('room'))
+           # if id is not None and id not in USER_DATA[user]['matrix-rooms']:
+           #     USER_DATA[user]['matrix-rooms'].append(id)
+
+#set flags for users        
 forbidroomcreationusers=[]
 forbidencryptedroomcreationusers=[]
 forbidunencryptedroomcreationusers=[]
@@ -380,15 +461,15 @@ forbidunencryptedroomcreationusers=[]
 for group in spec_flags.get('ldapgroups-forbidroomcreation',[]):
     forbidroomcreationusers += USERSINGROUP[group]
 for user in forbidroomcreationusers:
-    flag[user]['forbidroomcreation'] = True
+    USER_DATA[user]['forbidroomcreation'] = True
 for group in spec_flags.get('ldapgroups-forbidencryptedroomcreation',[]):
     forbidencryptedroomcreationusers += USERSINGROUP[group]
 for user in forbidencryptedroomcreationusers:
-    flag[user]['forbidencryptedroomcreation'] = True
+    USER_DATA[user]['forbidencryptedroomcreation'] = True
 for group in spec_flags.get('ldapgroups-forbidunencryptedroomcreation',[]):
     forbidunencryptedroomcreationusers += USERSINGROUP[group]
 for user in forbidunencryptedroomcreationusers:
-    flag[user]['forbidunencryptedroomcreation'] = True
+    USER_DATA[user]['forbidunencryptedroomcreation'] = True
                 
                 
                 
@@ -403,10 +484,9 @@ for user in USERS:
     user_data['authType'] = "rest"
     user_data['joinedCommunityIds'] = USER_DATA[user]['matrix-groups']
     user_data['joinedRoomIds'] = USER_DATA[user]['matrix-rooms']
-    user_data['forbidRoomCreation'] = flag[user]['forbidroomcreation']
-    user_data['forbidUnencryptedRoomCreation'] = flag[user]['forbidunencryptedroomcreation']
-    user_data['forbidEncryptedRoomCreation'] = flag[user]['forbidencryptedroomcreation']
-    
+    user_data['forbidRoomCreation'] = USER_DATA[user]['forbidroomcreation']
+    user_data['forbidUnencryptedRoomCreation'] = USER_DATA[user]['forbidunencryptedroomcreation']
+    user_data['forbidEncryptedRoomCreation'] = USER_DATA[user]['forbidencryptedroomcreation']
     list.append(user_data)
 policy_update_users(list)
 
