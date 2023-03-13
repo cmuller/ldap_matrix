@@ -59,7 +59,8 @@ ldapgroups-forbidunencryptedroomcreation:
 
 * On the first part of the yaml file, set the user based flags for the members of *ldapgroups-forbidroomcreation* and *ldapgroups-forbidencryptedroomcreation* and *forbidunencryptedroomcreation*.
 
-* On the second part, list all spaces/rooms with their ldapgroups, individual ldapusers and with *childof* the parent space of each room, tha tu want to place in a space. All the rooms and spaces are created as private rooms. 
+* On the second part, list all spaces/rooms with their ldapgroups, individual ldapusers and with *childof* the parent space of each room, tha tu want to place in a space. 
+All the rooms and spaces are created as private rooms by default. This can be adjusted by modifying the appropriate functions in spec2policy.py 
 
 
 ## Caveats
