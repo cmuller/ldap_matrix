@@ -70,5 +70,5 @@ All the rooms and spaces are created as private rooms by default. This can be ad
 
 ## Future ideas:
 * implement hooks
-* set room-powerlevels by ldapgroups
+* set room-powerlevels by ldapgroup-membership
 
